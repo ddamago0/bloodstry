@@ -1,6 +1,14 @@
 # 🩸 Bloodsty: El Turno de Guardia
 
-> Un *Horde Survival* visceral con atmósfera de *Survival Horror* y mecánicas de desmembramiento táctico. Desarrollado en Lua con el framework **LÖVE 2D**.
+**BLOODSTRY** (Intento de sangre), es un Horde Survival que consiste en sobrevivir rondas entre 4 stages, Un cementerio (El unico implementado hasta el momento), un hospital abandonado, una granja y un matadero con enemigos referentes a cada una de las zonas exploradas.
+
+Con Jefes como **La Parca**, en la primera stage y en la segunda su fusion con un zombie mutante, volviendolo **"El cadaver de la Parca"** y el ultimo boss siendo un caballo en vuelto en paja que al vencerlo se torna fuego y dandole paso a su jinete [el boss de la segunda stage], como **El primer jinete del apocalipsis**.
+
+La historia esta en desarrollo junto a la implementacion de las demas zonas, una vez pulido se subira a itch.io de gustarles podrian dejar comentarios al respecto, sobre que cosas les gustaria que estuviese en el juego final :)
+
+. Desarrollado en Lua con el framework **LÖVE 2D**.
+
+**Video promocional del juego:** https://youtu.be/CAdc_X7BwO0?si=ABXmyLEv_STZmR6f
 
 ---
 
@@ -103,3 +111,28 @@ Desde la terminal en el directorio del proyecto:
 love .
 ```
 O arrastrando la carpeta `Bloodstry` directamente sobre el ejecutable de `love.exe` en Windows.
+
+---
+
+## 🎬 Trailer de 30 segundos
+
+El archivo `bloodsty_trailer_30s.mp4` (1920×1080, 30 fps, H.264 + audio) muestra la Fase 1 jugable, las tres clases, la horda, las extremidades, el Sacrificio, el Escudo Óseo, las Maldiciones y el combate contra La Parca. Las Fases 2-4 aparecen como fichas conceptuales marcadas **«EN DISEÑO»**, porque todavía no están implementadas.
+
+Para regenerarlo:
+
+```bash
+# 1. Graba 900 fotogramas a 480x270 en la carpeta de guardado de LÖVE
+BLOODSTY_TRAILER=1 love .
+
+# 2. Genera la banda sonora ambiental
+python3 tools/make_trailer_audio.py /tmp/opencode/bloodsty_trailer_audio.wav
+
+# 3. Codifica el MP4 (desde la carpeta trailer_frames)
+cd ~/.local/share/love/bloodsty/trailer_frames
+ffmpeg -y -framerate 30 -start_number 0 -i frame_%05d.png \
+  -i /tmp/opencode/bloodsty_trailer_audio.wav \
+  -vf "scale=1920:1080:flags=neighbor" \
+  -c:v libx264 -preset slow -crf 18 -tune animation -pix_fmt yuv420p \
+  -c:a aac -b:a 160k -shortest -movflags +faststart \
+  /ruta/a/Bloodstry/bloodsty_trailer_30s.mp4
+```

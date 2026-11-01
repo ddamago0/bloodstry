@@ -96,13 +96,13 @@ def main(path: str) -> None:
     music = drone + noise
 
     # Impacts and transitions.
-    for at in (0.0, 5.0, 13.6, 17.0, 21.0, 23.2, 25.2, 27.2):
+    for at in (0.0, 5.0, 13.6, 17.0, 21.0, 22.7, 24.4, 26.1, 27.8):
         whoosh(music, at)
     boom(music, 0.0, amp=0.5, length=2.0)
     boom(music, 17.0, amp=0.75, length=2.2)
     boom(music, 21.0, amp=0.85, length=2.4)
-    for at in (23.2, 25.2, 27.2, 29.0):
-        bell(music, at, amp=0.09 if at < 29.0 else 0.12)
+    for at in (22.7, 24.4, 26.1, 27.8):
+        bell(music, at, amp=0.09 if at < 27.8 else 0.12)
 
     # Heartbeats: brief intro pulse, then the boss fight.
     for at in np.arange(0.55, 2.2, 0.85):
@@ -114,7 +114,7 @@ def main(path: str) -> None:
     fade = np.ones(n)
     fade_in = int(0.5 * SR)
     fade[:fade_in] = np.linspace(0, 1, fade_in)
-    fade_out_start = int(28.7 * SR)
+    fade_out_start = int(29.25 * SR)
     fade[fade_out_start:] = np.linspace(1, 0, n - fade_out_start) ** 1.5
     music *= fade
 

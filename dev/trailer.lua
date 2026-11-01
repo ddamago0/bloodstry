@@ -465,7 +465,7 @@ end
 
 local CONCEPTS = {
     {
-        at = 23.20,
+        at = 22.70,
         phase = "FASE 02",
         name = "CLÍNICA ABANDONADA",
         icon = "cross",
@@ -477,7 +477,7 @@ local CONCEPTS = {
         bossDesc = "Escupe ácido corrosivo y viste la túnica robada de La Parca."
     },
     {
-        at = 25.20,
+        at = 24.40,
         phase = "FASE 03",
         name = "LA GRANJA MARCHITA",
         icon = "flame",
@@ -489,7 +489,7 @@ local CONCEPTS = {
         bossDesc = "Carga veloz de arrollamiento; al arder, lo monta un jinete esqueleto."
     },
     {
-        at = 27.20,
+        at = 26.10,
         phase = "FASE 04",
         name = "EL MATADERO ABISAL",
         icon = "boss",
@@ -565,7 +565,7 @@ local function drawConcept(card, t)
 end
 
 local function drawEndCard(t)
-    local alpha = clamp01((t - 29.00) / 0.25)
+    local alpha = clamp01((t - 27.80) / 0.25)
     if alpha <= 0 then return end
 
     Theme.drawMenuBackground({ 0.90, 0.68, 0.76, 1 }, 1)
@@ -599,8 +599,8 @@ local function drawOverlay()
     drawBanner(t)
 
     -- Victory strip while the game-over state is visible.
-    if t >= 21.15 and t < 23.20 then
-        local a = fadeWindow(t, 21.15, 23.20, 0.25)
+    if t >= 21.15 and t < 22.70 then
+        local a = fadeWindow(t, 21.15, 22.70, 0.25)
         Theme.panel(96, 6, 288, 20, {
             fill = { 0.030, 0.024, 0.040, 0.88 * a },
             border = { 0.78, 0.62, 0.30, a },
@@ -612,7 +612,7 @@ local function drawOverlay()
     end
 
     for _, card in ipairs(CONCEPTS) do
-        if t >= card.at and t < card.at + 2.0 then
+        if t >= card.at and t < card.at + 1.70 then
             drawConcept(card, t)
         end
     end
@@ -632,7 +632,7 @@ local function drawOverlay()
         love.graphics.rectangle("fill", 0, 0, 480, 270)
         love.graphics.setColor(1, 1, 1, 1)
     end
-    if t >= 29.62 then fade = math.max(fade, (t - 29.62) / 0.38) end
+    if t >= 29.35 then fade = math.max(fade, (t - 29.35) / 0.65) end
     drawFade(fade)
 end
 

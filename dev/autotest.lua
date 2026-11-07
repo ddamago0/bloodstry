@@ -4,6 +4,11 @@
     Enable with:
         BLOODSTY_AUTOTEST=full love .
         BLOODSTY_AUTOTEST=ysort love .
+        BLOODSTY_AUTOTEST=long love .
+        BLOODSTY_AUTOTEST=victory love .
+        BLOODSTY_AUTOTEST=pacing love .   (150 s balance probe)
+        BLOODSTY_AUTOTEST=bestiary love . (static lineup of imported creatures)
+        BLOODSTY_AUTOTEST=walk love .     (player walk-cycle probe)
 
     Screenshots are written to LOVE's save directory under captures/.
     This module is a no-op unless the environment variable is set, so it
@@ -33,6 +38,7 @@ local nextEvent = 1
 local capturesLeft = 0
 local finished = false
 local events = {}
+local perFrame = nil
 
 -- Deterministic RNG for reproducible captures.
 math.randomseed(9271)
@@ -274,11 +280,148 @@ local function scenarioVictory()
     addAction(2.60, function() finished = true end)
 end
 
+-- Progression pacing probe: an invulnerable bot plays the stage at full tilt
+-- (auto-aim, auto-attack, auto-picks the first upgrade card) and prints how
+-- many kills each level actually costs. Useful after tuning the blood curve.
+local function scenarioPacing()
+    heldInputs({})
+    addAction(0.30, function() love.keypressed("1") end)
+
+    addAction(0.70, function()
+        local play = stateMachine.current
+        local p = play and play.player
+        if not p then return end
+        p.takeDamage = function() return 0 end
+        p.hp = p.maxHp
+        p:equipLimb(Limb(Limb.TYPES.SKELETON_ARM, 9999))
+    end)
+
+    local aimX, aimY = 360, 120
+    local move = {}
+    local lastReport = -1e9
+
+    Input.isDown = function(action)
+        if action == "attack" or action == "limb_attack" then return true end
+        return move[action] == true
+    end
+    Input.getGameMouse = function() return aimX, aimY end
+
+    perFrame = function()
+        local play = stateMachine.current
+        if not play or not play.player or not play.enemies then return end
+        local p = play.player
+        local now = love.timer.getTime() - startedAt
+
+        -- Consume level-ups as a player would, otherwise the modal menu freezes
+        -- the simulation and the measurement stops.
+        if play.upgradeMenu and play.upgradeMenu.active then
+            love.keypressed("1")
+            return
+        end
+
+        -- Aim at the closest living enemy, boss included.
+        local target, best = nil, 300 * 300
+        local candidates = play.enemies
+        for i = 1, #candidates do
+            local e = candidates[i]
+            if e.alive then
+                local dx, dy = e.x - p.x, e.y - p.y
+                local d = dx * dx + dy * dy
+                if d < best then
+                    best, target = d, e
+                end
+            end
+        end
+        if target then
+            aimX, aimY = play.camera:toScreenCoords(target.x, target.y)
+        end
+
+        -- Circle-strafe so the bot does not stand still inside the horde.
+        local ang = now * 0.9
+        local mx, my = math.cos(ang), math.sin(ang)
+        move = {}
+        if mx > 0.25 then move.right = true elseif mx < -0.25 then move.left = true end
+        if my > 0.25 then move.down = true elseif my < -0.25 then move.up = true end
+
+        if now - lastReport >= 10 then
+            lastReport = now
+            print(string.format("[pacing] t=%5.1fs  nivel=%2d  bajas=%3d  sangre=%4d/%4d  vivos=%3d",
+                now, p.level, p.killCount, p.bloodPoints, p.pointsToNextLevel, #play.enemies))
+        end
+
+        if now >= 150 then
+            print(string.format("[pacing] FIN  t=%5.1fs  nivel=%d  bajas=%d",
+                now, p.level, p.killCount))
+            finished = true
+            love.event.quit()
+        end
+    end
+end
+
+-- Static lineup of every imported creature, for eyeballing scale, silhouettes
+-- and the corruption pass without waiting for the spawn table to unlock them.
+local function scenarioBestiary()
+    heldInputs({})
+    addAction(0.20, function() love.keypressed("1") end)
+    addAction(0.60, function()
+        local play = stateMachine.current
+        local stage = play.stage
+        stage.props = {}
+        stage.spawnTimer = 1e9
+        play.enemies = {}
+        play.player.takeDamage = function() return 0 end
+        -- Hide the HUD so the top row is not covered by the health panel.
+        play.hud.draw = function() end
+
+        local order = {
+            Enemy.TYPES.SKELETON_COMMON,
+            Enemy.TYPES.HOUND,
+            Enemy.TYPES.SKELETON_ROBED,
+            Enemy.TYPES.ZOMBIE,
+            Enemy.TYPES.SKELETON_TALL,
+            Enemy.TYPES.BONE_GOLEM,
+            Enemy.TYPES.LANKER,
+            Enemy.TYPES.WARDEN,
+            Enemy.TYPES.WEAVER,
+        }
+        local p = play.player
+        p.x, p.y = 0, 0
+        for i, enemyType in ipairs(order) do
+            local col = (i - 1) % 4
+            local row = math.floor((i - 1) / 4)
+            local e = Enemy(-132 + col * 88, -78 + row * 84, enemyType)
+            e.speed = 0
+            e.contactDamage = 0
+            table.insert(play.enemies, e)
+        end
+    end)
+    addCapture(1.20, "20_bestiary_lineup")
+    addAction(1.50, function() finished = true end)
+end
+
+-- Walk-cycle probe: walk right and grab four successive poses. The player is
+-- always centred by the camera, so the captures can be compared directly.
+-- BLOODSTY_CLASS=1|2|3 picks Guerrero, Bárbaro or Asesino.
+local function scenarioWalk()
+    local classKey = os.getenv("BLOODSTY_CLASS") or "1"
+    heldInputs({})
+    addAction(0.20, function() love.keypressed(classKey) end)
+    addAction(0.60, function() heldInputs({ right = true }) end)
+    addCapture(0.90, "20_walk_a")
+    addCapture(1.03, "21_walk_b")
+    addCapture(1.16, "22_walk_c")
+    addCapture(1.29, "23_walk_d")
+    addAction(1.45, function() finished = true end)
+end
+
 local scenarios = {
     full = scenarioFull,
     ysort = scenarioYsort,
     long = scenarioLong,
     victory = scenarioVictory,
+    pacing = scenarioPacing,
+    bestiary = scenarioBestiary,
+    walk = scenarioWalk,
 }
 
 function Autotest.hook(machine)
@@ -308,6 +451,14 @@ function Autotest.update(dt)
             if not ok then
                 print("[autotest] action error: " .. tostring(err))
             end
+        end
+    end
+
+    if perFrame then
+        local ok, err = pcall(perFrame, dt)
+        if not ok then
+            print("[autotest] per-frame error: " .. tostring(err))
+            perFrame = nil
         end
     end
 end

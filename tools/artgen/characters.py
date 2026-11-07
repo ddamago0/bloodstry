@@ -5,10 +5,8 @@ from __future__ import annotations
 
 from .common import (
     BEARD, BLOOD, BLOOD_DARK, BLOOD_LIGHT, BONE, BONE_DARK, BONE_SHADOW,
-    EYE_GHOST, EYE_RED, GOLD, GOLD_DARK, HAIR, INK, INK_SOFT, LEATHER,
-    LEATHER_DARK, LEATHER_LIGHT, PURPLE, PURPLE_DARK, PURPLE_LIGHT, SKIN,
-    SKIN_BLOOD, SKIN_SHADOW, STEEL, STEEL_DARK, STEEL_LIGHT, STEEL_RUST,
-    STONE, TABARD, TABARD_DARK, ZOMBIE, ZOMBIE_DARK, ZOMBIE_LIGHT,
+    EYE_GHOST, EYE_RED, GOLD, GOLD_DARK, INK, INK_SOFT,
+    PURPLE, PURPLE_DARK, PURPLE_LIGHT, ZOMBIE, ZOMBIE_DARK, ZOMBIE_LIGHT,
     canvas, draw, line, out_poly, out_rect, poly, px, rect, save,
 )
 
@@ -18,174 +16,269 @@ BOSS_W, BOSS_H = 48, 64
 STEP = [-2, 0, 2, 0]
 BOB = [0, -1, 0, -1]
 
+# ---------------------------------------------------------------------------
+# Player palette
+# ---------------------------------------------------------------------------
+# The survivors use the same ash / bone / dried-blood register as the imported
+# bestiary instead of the old saturated "adventure" colours, so they sit in the
+# same world as the mobs.
+ASH_HI = (198, 191, 183, 255)
+ASH = (150, 143, 137, 255)
+ASH_MID = (104, 99, 100, 255)
+ASH_DARK = (66, 63, 71, 255)
+VOID = (22, 20, 29, 255)
+
+SKIN_M = (170, 152, 134, 255)
+SKIN_M_SH = (126, 110, 100, 255)
+SKIN_M_BL = (146, 92, 86, 255)
+
+BONE_M = (190, 184, 174, 255)
+BONE_M_SH = (146, 140, 132, 255)
+
+STEEL_M = (110, 113, 122, 255)
+STEEL_M_D = (70, 72, 82, 255)
+STEEL_M_H = (148, 150, 158, 255)
+
+LEATH_M = (92, 74, 60, 255)
+LEATH_M_D = (56, 45, 39, 255)
+LEATH_M_L = (120, 99, 80, 255)
+
+CLOTH_M = (102, 72, 76, 255)
+CLOTH_M_D = (68, 46, 53, 255)
+BLOOD_M = (118, 40, 45, 255)
+BLOOD_M_D = (74, 27, 33, 255)
+
+# Cool grey hair and beard keep the Bárbaro's face readable against the warm
+# brown fur pelt draped over his shoulders.
+HAIR_GRAY = (84, 76, 72, 255)
+BEARD_GRAY = (108, 96, 88, 255)
+BEARD_GRAY_D = (76, 66, 62, 255)
+
+# Four-step walk: contact / passing / contact / passing. Frame 1 is grounded so
+# the idle pose never floats. `stance` deepens the forward foot and `lift`
+# raises the swinging one; the swinging leg also closes toward the centre line.
+NEAR_STANCE = [0, 0, -1, 0]
+FAR_STANCE = [-1, 0, 0, 0]
+NEAR_LIFT = [0, 0, 0, 3]
+FAR_LIFT = [0, 3, 0, 0]
+ARM_SWING = [-2, 0, 2, 0]
+SWAY = [1, 0, -1, 0]
+
 
 def _eye(d, x, y, color=EYE_RED):
     px(d, x, y, color)
     px(d, x + 1, y, color)
 
 
-def _boot(d, x, y, color=LEATHER_DARK):
-    out_rect(d, x, y, 4, 3, color)
-    px(d, x, y + 2, INK)
-    px(d, x + 3, y + 2, INK)
-
-
 # ---------------------------------------------------------------------------
 # Players
 # ---------------------------------------------------------------------------
+def _player_leg(d, x, stance, lift, cloth, shade, boot):
+    """One leg. `stance` moves the foot forward/back, `lift` raises it."""
+    by = 36 + stance - lift
+    out_rect(d, x, 27, 4, by - 27, cloth)
+    rect(d, x + 1, 29, 1, max(1, by - 31), shade)
+    out_rect(d, x, by, 4, 3, boot)
+    px(d, x + 1, by + 2, VOID)
+
+
 def draw_guerrero(d, f):
     bob = BOB[f]
-    off = STEP[f]
-    # Back arm
-    out_rect(d, 8, 19 + bob, 3, 8, STEEL_DARK)
-    out_rect(d, 7, 26 + bob, 3, 3, SKIN_SHADOW)
-    # Back leg
-    out_rect(d, 12 + off // 2, 29, 4, 8, LEATHER_DARK)
-    _boot(d, 11 + off // 2, 37)
-    # Torso silhouette
-    out_poly(d, [(11, 16 + bob), (20, 16 + bob), (21, 28), (10, 28)], STEEL_DARK)
-    # Chainmail skirt
-    rect(d, 11, 25 + bob, 10, 4, LEATHER)
-    deco = [(12, 27), (15, 29), (18, 28), (20, 26)]
-    for x, y in deco:
-        px(d, x, y + bob, LEATHER_LIGHT)
-    # Tabard
-    poly(d, [(13, 18 + bob), (19, 18 + bob), (20, 29), (12, 29)], TABARD)
-    rect(d, 15, 19 + bob, 2, 8, TABARD_DARK)
-    px(d, 16, 23 + bob, BLOOD_LIGHT)
-    px(d, 15, 24 + bob, BLOOD)
-    # Chest plate
-    out_rect(d, 12, 16 + bob, 9, 4, STEEL)
-    rect(d, 13, 17 + bob, 3, 1, STEEL_LIGHT)
-    px(d, 19, 19 + bob, STEEL_DARK)
-    # Pauldrons
-    out_poly(d, [(8, 16 + bob), (14, 15 + bob), (14, 20 + bob), (9, 21 + bob)], STEEL)
-    out_poly(d, [(19, 15 + bob), (24, 16 + bob), (23, 21 + bob), (18, 20 + bob)], STEEL)
-    px(d, 10, 17 + bob, STEEL_LIGHT)
-    px(d, 22, 17 + bob, STEEL_LIGHT)
-    # Belt + buckle
-    rect(d, 10, 27 + bob, 11, 2, LEATHER_DARK)
-    px(d, 16, 27 + bob, GOLD)
-    px(d, 16, 28 + bob, GOLD_DARK)
-    # Front leg
-    out_rect(d, 17 - off // 2, 29, 4, 8, LEATHER_DARK)
-    _boot(d, 17 - off // 2, 37)
-    # Front arm
-    out_rect(d, 21, 19 + bob, 3, 6, STEEL)
-    out_rect(d, 21, 24 + bob, 3, 4, SKIN_SHADOW)
-    px(d, 22, 26 + bob, BLOOD)
-    # Neck & head
-    rect(d, 15, 14 + bob, 3, 2, SKIN_SHADOW)
-    out_rect(d, 13, 8 + bob, 7, 7, SKIN)
-    # Hair
-    rect(d, 13, 7 + bob, 7, 2, HAIR)
-    rect(d, 12, 8 + bob, 2, 3, HAIR)
-    rect(d, 13, 14 + bob, 7, 1, SKIN_SHADOW)
-    # Bloodied face / eyes
-    px(d, 16, 10 + bob, SKIN_BLOOD)
-    _eye(d, 16, 11 + bob)
-    px(d, 14, 12 + bob, BLOOD_DARK)
-    # Stubble
-    px(d, 18, 14 + bob, HAIR)
-    px(d, 19, 13 + bob, HAIR)
-    # Scabbard
-    line(d, (10, 29), (7, 36), LEATHER_LIGHT)
-    px(d, 7, 36, GOLD_DARK)
+    swing = ARM_SWING[f]
+    # Back leg / arm.
+    _player_leg(d, 12 if FAR_LIFT[f] else 11, FAR_STANCE[f], FAR_LIFT[f], LEATH_M_D, VOID, LEATH_M_D)
+    out_poly(d, [
+        (8, 14 + bob), (11, 13 + bob),
+        (11, 22 + bob - swing), (8, 23 + bob - swing),
+    ], STEEL_M_D)
+    # Torso: mail hauberk under a bloodied tabard.
+    out_poly(d, [
+        (9, 13 + bob), (22, 13 + bob), (22, 24 + bob),
+        (20, 28), (11, 28), (9, 24 + bob),
+    ], STEEL_M_D)
+    poly(d, [
+        (10, 15 + bob), (21, 15 + bob), (21, 23 + bob),
+        (19, 26), (12, 26), (10, 23 + bob),
+    ], STEEL_M)
+    poly(d, [(14, 16 + bob), (18, 16 + bob), (19, 27), (13, 27)], CLOTH_M)
+    rect(d, 15, 17 + bob, 1, 10, CLOTH_M_D)
+    px(d, 17, 22 + bob, BLOOD_M)
+    px(d, 18, 23, BLOOD_M_D)
+    line(d, (10, 19 + bob), (12, 20 + bob), STEEL_M_H)
+    rect(d, 11, 25 + bob, 9, 2, LEATH_M_D)
+    px(d, 15, 25 + bob, ASH)
+    # Pauldrons.
+    out_poly(d, [(7, 14 + bob), (12, 12 + bob), (13, 17 + bob), (8, 18 + bob)], STEEL_M)
+    poly(d, [(8, 14 + bob), (12, 13 + bob), (12, 16 + bob), (8, 17 + bob)], STEEL_M_H)
+    out_poly(d, [(19, 12 + bob), (24, 14 + bob), (23, 18 + bob), (18, 17 + bob)], STEEL_M)
+    poly(d, [(20, 13 + bob), (23, 14 + bob), (22, 16 + bob), (19, 16 + bob)], STEEL_M_H)
+    # Front leg and sword arm.
+    _player_leg(d, 17 if NEAR_LIFT[f] else 18, NEAR_STANCE[f], NEAR_LIFT[f], LEATH_M, VOID, LEATH_M_D)
+    out_poly(d, [
+        (20, 14 + bob), (23, 15 + bob),
+        (24 + swing, 22 + bob), (21 + swing, 24 + bob),
+    ], STEEL_M_D)
+    rect(d, 21 + swing, 16 + bob, 3, 4, STEEL_M)
+    rect(d, 21 + swing, 20 + bob, 3, 3, LEATH_M)
+    px(d, 21 + swing, 23 + bob, SKIN_M_SH)
+    # Neck and great helm.
+    rect(d, 15, 11 + bob, 2, 2, SKIN_M_SH)
+    out_poly(d, [
+        (12, 12 + bob), (12, 6 + bob), (16, 3 + bob),
+        (20, 6 + bob), (20, 12 + bob),
+    ], STEEL_M)
+    # Closed great helm: a dark visor slit with two dim eye glints.
+    rect(d, 13, 8 + bob, 6, 4, ASH_DARK)
+    rect(d, 13, 9 + bob, 6, 1, VOID)
+    px(d, 14, 9 + bob, ASH)
+    px(d, 18, 9 + bob, ASH)
+    rect(d, 16, 8 + bob, 1, 5, STEEL_M_H)
+    rect(d, 13, 11 + bob, 6, 1, VOID)
+    px(d, 15, 12 + bob, ASH_MID)
+    px(d, 17, 12 + bob, ASH_MID)
+    line(d, (14, 5 + bob), (17, 4 + bob), STEEL_M_H)
+    rect(d, 15, 2 + bob, 2, 2, CLOTH_M_D)
+    # Scabbard.
+    line(d, (11, 26), (7, 34), LEATH_M_L)
+    px(d, 7, 34, ASH)
 
 
 def draw_barbaro(d, f):
     bob = BOB[f]
-    off = STEP[f]
-    # Back arm (bare, muscular)
-    out_poly(d, [(7, 18 + bob), (10, 17 + bob), (11, 27 + bob), (8, 28 + bob)], SKIN_SHADOW)
-    px(d, 8, 25 + bob, SKIN_BLOOD)
-    # Back leg
-    out_rect(d, 12 + off // 2, 29, 5, 8, LEATHER)
-    _boot(d, 11 + off // 2, 37, LEATHER_DARK)
-    # Big torso
-    out_poly(d, [(10, 15 + bob), (22, 15 + bob), (23, 29), (9, 29)], SKIN_SHADOW)
-    # Fur vest
-    out_poly(d, [(8, 15 + bob), (24, 15 + bob), (24, 21 + bob), (22, 23 + bob), (10, 23 + bob), (8, 21 + bob)], BEARD)
-    for x, y in [(9, 17), (12, 16), (15, 18), (18, 16), (21, 17), (23, 19)]:
+    swing = ARM_SWING[f]
+    sway = [1, 0, -1, 0][f]
+    # Back leg / bare arm.
+    _player_leg(d, 12 if FAR_LIFT[f] else 11, FAR_STANCE[f], FAR_LIFT[f], LEATH_M, VOID, LEATH_M_D)
+    out_poly(d, [
+        (7, 14 + bob), (11, 13 + bob),
+        (11, 22 + bob - swing), (7, 24 + bob - swing),
+    ], SKIN_M_SH)
+    # Heavy bare torso.
+    out_poly(d, [
+        (9, 13 + bob), (23, 13 + bob), (23, 23 + bob),
+        (21, 27), (11, 27), (9, 23 + bob),
+    ], SKIN_M_SH)
+    poly(d, [
+        (10, 15 + bob), (22, 15 + bob), (22, 22 + bob),
+        (20, 25), (12, 25), (10, 22 + bob),
+    ], SKIN_M)
+    # Left-side shadow, sternum, pecs and an old wound keep the torso from
+    # reading as a flat slab.
+    rect(d, 10, 16 + bob, 2, 7, SKIN_M_SH)
+    rect(d, 16, 16 + bob, 1, 4, SKIN_M_SH)
+    line(d, (12, 18 + bob), (14, 19 + bob), SKIN_M_SH)
+    line(d, (19, 18 + bob), (21, 19 + bob), SKIN_M_SH)
+    px(d, 14, 21 + bob, SKIN_M_BL)
+    px(d, 13, 22 + bob, SKIN_M_BL)
+    # Fur pelt over the shoulders, open at the chest.
+    out_poly(d, [
+        (6, 16 + bob), (10, 13 + bob), (16, 16 + bob), (21, 13 + bob), (25, 16 + bob),
+        (23, 19 + bob), (20, 17 + bob), (16, 19 + bob), (12, 17 + bob), (8, 19 + bob),
+    ], BEARD)
+    for x, y in [(8, 16), (11, 14), (21, 14), (23, 16), (9, 18), (21, 18)]:
         px(d, x, y + bob, (112, 87, 66, 255))
-    # Tunic / bloody apron
-    rect(d, 12, 22 + bob, 9, 6, LEATHER_DARK)
-    poly(d, [(13, 23 + bob), (20, 23 + bob), (21, 30), (12, 30)], TABARD_DARK)
-    px(d, 16, 25 + bob, BLOOD)
-    px(d, 17, 27 + bob, BLOOD_LIGHT)
-    rect(d, 10, 28, 13, 2, LEATHER)
-    px(d, 16, 28, GOLD)
-    # Front leg
-    out_rect(d, 17 - off // 2, 29, 5, 8, LEATHER)
-    _boot(d, 17 - off // 2, 37, LEATHER_DARK)
-    # Front arm
-    out_poly(d, [(22, 17 + bob), (26, 18 + bob), (25, 27 + bob), (21, 27 + bob)], SKIN)
-    px(d, 24, 20 + bob, SKIN_SHADOW)
-    px(d, 23, 25 + bob, BLOOD_DARK)
-    # Neck / bald head
-    rect(d, 14, 13 + bob, 5, 2, SKIN_SHADOW)
-    out_rect(d, 12, 6 + bob, 9, 8, SKIN)
-    rect(d, 12, 5 + bob, 8, 2, HAIR)
-    px(d, 11, 7 + bob, HAIR)
-    # Beard
-    out_poly(d, [(12, 12 + bob), (21, 12 + bob), (20, 16 + bob), (16, 17 + bob), (12, 15 + bob)], BEARD)
-    px(d, 14, 14 + bob, (94, 70, 55, 255))
-    # Scar + eyes
-    line(d, (13, 8 + bob), (15, 11 + bob), SKIN_BLOOD)
-    _eye(d, 17, 9 + bob, (244, 151, 96, 255))
-    px(d, 20, 10 + bob, SKIN_SHADOW)
-    # Bone trophy necklace
-    for x in (14, 16, 18):
-        px(d, x, 18 + bob, BONE_SHADOW)
+    # A single bone charm hanging from the pelt.
+    px(d, 16, 19 + bob, BONE_M_SH)
+    px(d, 16, 20 + bob, BONE_M)
+    # Ragged apron.
+    rect(d, 11, 22 + bob, 10, 5, LEATH_M_D)
+    poly(d, [(13, 22 + bob), (19, 22 + bob), (20 + sway, 28), (12 + sway, 28)], CLOTH_M_D)
+    px(d, 16, 24 + bob, BLOOD_M)
+    px(d, 17, 26 + bob, BLOOD_M_D)
+    rect(d, 10, 26, 12, 2, LEATH_M)
+    px(d, 15, 26, ASH_MID)
+    # Front leg and arm.
+    _player_leg(d, 17 if NEAR_LIFT[f] else 18, NEAR_STANCE[f], NEAR_LIFT[f], LEATH_M, VOID, LEATH_M_D)
+    out_poly(d, [
+        (21, 13 + bob), (26, 15 + bob),
+        (25 + swing, 24 + bob), (21 + swing, 24 + bob),
+    ], SKIN_M)
+    rect(d, 22 + swing, 16 + bob, 1, 5, SKIN_M_SH)
+    rect(d, 22 + swing, 22 + bob, 3, 2, LEATH_M)
+    px(d, 22 + swing, 24 + bob, SKIN_M_BL)
+    # Neck and shaved head.
+    rect(d, 14, 11 + bob, 5, 2, SKIN_M_SH)
+    out_poly(d, [(12, 11 + bob), (12, 6 + bob), (16, 4 + bob), (20, 6 + bob), (20, 11 + bob)], SKIN_M)
+    rect(d, 12, 5 + bob, 8, 2, HAIR_GRAY)
+    px(d, 11, 8 + bob, HAIR_GRAY)
+    rect(d, 13, 7 + bob, 6, 1, SKIN_M_SH)
+    # Grey beard: a different value from the pelt, so the face stays readable.
+    out_poly(d, [
+        (12, 10 + bob), (20, 10 + bob), (19, 12 + bob),
+        (16, 13 + bob), (13, 12 + bob),
+    ], BEARD_GRAY)
+    rect(d, 13, 10 + bob, 6, 1, BEARD_GRAY)
+    px(d, 14, 12 + bob, BEARD_GRAY_D)
+    px(d, 18, 12 + bob, HAIR_GRAY)
+    # Scar and eyes under a heavy brow.
+    line(d, (12, 7 + bob), (14, 10 + bob), SKIN_M_BL)
+    px(d, 14, 9 + bob, VOID)
+    px(d, 17, 9 + bob, VOID)
+    px(d, 16, 9 + bob, SKIN_M_SH)
 
 
 def draw_asesino(d, f):
     bob = BOB[f]
-    off = STEP[f]
-    # Back arm
-    out_rect(d, 8, 19 + bob, 3, 7, (34, 48, 54, 255))
-    out_rect(d, 8, 25 + bob, 2, 2, SKIN_SHADOW)
-    # Back leg
-    out_rect(d, 13 + off // 2, 29, 3, 8, (36, 40, 49, 255))
-    rect(d, 13 + off // 2, 35, 3, 2, LEATHER_DARK)
-    _boot(d, 12 + off // 2, 37)
-    # Cloak tails
-    out_poly(d, [(11, 20 + bob), (15, 20 + bob), (14, 35), (9, 32)], (31, 44, 51, 255))
-    out_poly(d, [(19, 20 + bob), (22, 22 + bob), (23, 33), (19, 35)], (31, 44, 51, 255))
-    # Torso
-    out_poly(d, [(12, 17 + bob), (20, 17 + bob), (21, 29), (11, 29)], (38, 52, 58, 255))
-    # Chest straps
-    line(d, (12, 18 + bob), (20, 27 + bob), LEATHER_LIGHT)
-    line(d, (20, 18 + bob), (13, 26 + bob), LEATHER_DARK)
-    rect(d, 10, 27, 12, 2, LEATHER_DARK)
-    px(d, 16, 27, STEEL_LIGHT)
-    # Pouch
-    out_rect(d, 18, 24 + bob, 4, 4, LEATHER)
-    px(d, 19, 25 + bob, GOLD_DARK)
-    # Front leg
-    out_rect(d, 17 - off // 2, 29, 3, 8, (36, 40, 49, 255))
-    line(d, (17 - off // 2, 32), (19 - off // 2, 32), LEATHER_LIGHT)
-    _boot(d, 16 - off // 2, 37)
-    # Front arm
-    out_rect(d, 21, 19 + bob, 3, 6, (34, 48, 54, 255))
-    out_rect(d, 21, 24 + bob, 2, 3, SKIN_SHADOW)
-    # Hooded head
-    out_poly(d, [(12, 16 + bob), (12, 9 + bob), (16, 4 + bob), (20, 8 + bob), (21, 16 + bob)], (34, 50, 55, 255))
-    rect(d, 13, 14 + bob, 7, 2, (34, 50, 55, 255))
-    # Hood trim
-    line(d, (13, 15 + bob), (13, 9 + bob), (65, 102, 99, 255))
-    line(d, (14, 8 + bob), (16, 5 + bob), (65, 102, 99, 255))
-    # Face void
-    out_rect(d, 14, 9 + bob, 6, 6, (23, 28, 33, 255))
-    _eye(d, 15, 11 + bob)
-    px(d, 19, 12 + bob, BLOOD_DARK)
-    # Scarf
-    out_poly(d, [(12, 16 + bob), (21, 16 + bob), (22, 19 + bob), (17, 18 + bob), (11, 20 + bob), (11, 17 + bob)], TABARD_DARK)
-    px(d, 13, 18 + bob, TABARD)
-    # Belt knives
-    line(d, (20, 26), (23, 24), STEEL_LIGHT)
-    line(d, (11, 26), (8, 24), STEEL)
-    px(d, 8, 24, GOLD)
+    swing = ARM_SWING[f]
+    sway = [1, 0, -1, 0][f]
+    # Back leg / arm.
+    _player_leg(d, 12 if FAR_LIFT[f] else 11, FAR_STANCE[f], FAR_LIFT[f], ASH_DARK, VOID, LEATH_M_D)
+    out_poly(d, [
+        (9, 15 + bob), (11, 14 + bob),
+        (11, 22 + bob - swing), (9, 23 + bob - swing),
+    ], ASH_DARK)
+    # Cloak tails behind the hips: narrow strips so the silhouette stays lean.
+    out_poly(d, [(10, 21 + bob), (13, 20 + bob), (12 + sway, 32), (8 + sway, 29)], ASH_DARK)
+    out_poly(d, [(18, 21 + bob), (21, 23 + bob), (22 + sway, 29), (18 + sway, 32)], ASH_DARK)
+    # Lean torso.
+    out_poly(d, [
+        (11, 14 + bob), (20, 14 + bob), (21, 24 + bob),
+        (19, 28), (12, 28), (10, 24 + bob),
+    ], ASH_DARK)
+    poly(d, [
+        (12, 16 + bob), (19, 16 + bob), (20, 23 + bob),
+        (18, 26), (13, 26), (11, 23 + bob),
+    ], ASH_MID)
+    # Harness straps.
+    line(d, (12, 16 + bob), (19, 25 + bob), LEATH_M_L)
+    line(d, (19, 16 + bob), (13, 25 + bob), LEATH_M_D)
+    rect(d, 11, 25 + bob, 9, 2, LEATH_M_D)
+    px(d, 15, 25 + bob, ASH)
+    # Pouch.
+    out_rect(d, 17, 22 + bob, 4, 4, LEATH_M)
+    px(d, 18, 23 + bob, ASH_MID)
+    # Front leg and arm.
+    _player_leg(d, 17 if NEAR_LIFT[f] else 18, NEAR_STANCE[f], NEAR_LIFT[f], ASH_DARK, VOID, LEATH_M_D)
+    out_poly(d, [
+        (19, 15 + bob), (22, 16 + bob),
+        (23 + swing, 22 + bob), (20 + swing, 23 + bob),
+    ], ASH_MID)
+    rect(d, 20 + swing, 17 + bob, 2, 4, ASH_DARK)
+    px(d, 21 + swing, 23 + bob, SKIN_M_SH)
+    # Hood.
+    out_poly(d, [
+        (11, 15 + bob), (11, 8 + bob), (16, 3 + bob),
+        (20, 8 + bob), (21, 16 + bob),
+    ], ASH_DARK)
+    poly(d, [(13, 14 + bob), (13, 9 + bob), (16, 5 + bob), (19, 9 + bob), (19, 14 + bob)], VOID)
+    # Only a strip of eyes shows above the cloth mask.
+    rect(d, 14, 9 + bob, 4, 3, SKIN_M_SH)
+    rect(d, 14, 9 + bob, 4, 1, SKIN_M_BL)
+    px(d, 14, 10 + bob, VOID)
+    px(d, 17, 10 + bob, VOID)
+    rect(d, 14, 12 + bob, 4, 2, CLOTH_M_D)
+    px(d, 15, 13 + bob, CLOTH_M)
+    line(d, (13, 10 + bob), (13, 8 + bob), ASH_MID)
+    # Scarf.
+    out_poly(d, [
+        (11, 14 + bob), (20, 14 + bob), (21, 17 + bob),
+        (16, 16 + bob), (10 + sway, 18 + bob), (10, 15 + bob),
+    ], CLOTH_M_D)
+    px(d, 13, 16 + bob, CLOTH_M)
+    # Belt knives.
+    line(d, (19, 25), (22, 23), STEEL_M_H)
+    line(d, (11, 25), (8, 23), STEEL_M)
+    px(d, 8, 23, ASH_MID)
 
 
 PLAYERS = {

@@ -44,6 +44,8 @@ La historia esta en desarrollo junto a la implementacion de las demas zonas, una
    * *Arma inicial:* **2 Dagas** (estocadas rápidas y letales a corta distancia).
    * *Pasiva:* Lanza cabezas al doble de velocidad y aplica **Sangrado DoT** con brazos de zombie.
 
+> Los tres supervivientes comparten la paleta de ceniza, hueso y sangre seca del bestiario y tienen un ciclo de caminata de 4 poses (contacto, paso, contacto inverso, paso). Ver §7.2 de `Implementacion_Tecnica.md`.
+
 ---
 
 ## 🦴 Mecánica Central: Armas de Extremidades (Gore System)
@@ -54,6 +56,58 @@ Al matar enemigos, existe una probabilidad de que cercenes una de sus partes:
 * **Brazo de Zombie (Brutalidad física):** Alcance corto pero un impacto demoledor que pulveriza a los enemigos cercanos.
 * **Durabilidad Oculta & Alerta:** Las extremidades tienen una resistencia secreta aleatoria. Al restarles pocos golpes, la interfaz y el arma parpadean en rojo sangre.
 * **Ataque de Sacrificio (*Last Ditch Attack*):** Con `E` o `Shift`, antes de que el arma se rompa sola, la haces detonar o la disparas con el triple ($3\times$) de daño y área masiva.
+
+---
+
+## 📈 Progresión y Ritmo de Sangre
+
+Los enemigos sueltan orbes de sangre que atraen hacia el jugador con el imán:
+* **Sabueso:** 9 de sangre.
+* **Esqueleto común:** 10 de sangre.
+* **Arrastrado (zombi):** 12 de sangre.
+* **Pálido encapuchado:** 14 de sangre.
+* **Licántropo (mutado):** 20 de sangre.
+* **Gólem de huesos:** 30 de sangre.
+* **Lánguido (élite):** 50 de sangre.
+* **Guardián de carne (mini-jefe):** 90 de sangre.
+* **Orbes del jefe:** 60 cada uno.
+
+El primer nivel cuesta **160** de sangre (unas 15 bajas) y cada nivel siguiente multiplica el umbral por **1.38**. Un nivel tardío pide más de 100 bajas, así que una partida completa termina alrededor del **nivel 7-11** en lugar de encadenar menús cada pocos segundos. El menú de mejoras se abre solo al acumular niveles pendientes, pero **nunca durante la intro de un jefe**.
+
+---
+
+## 🧟 Bestiario importado
+
+Las criaturas ya no son cuatro esqueletos dibujados a mano: el cementerio usa un bestiario de nueve siluetas importadas de packs externos, oscurecidas y cuantizadas a la paleta de ceniza, hueso y sangre seca.
+
+| Criatura | Rol | Silueta | Desde |
+|---|---|---|---|
+| `hound` | Enjambre rápido y frágil | 29×21 | sabueso de `scarymobs` |
+| `skeleton_common` | Base de la horda | 16×31 (2 frames) | esqueleto de `scarymobs` |
+| `zombie` (arrastrado) | Rápido, se pega al suelo | 36×16 | bestia reptante de `scarymobs` |
+| `skeleton_robed` (pálido) | Hostigador a distancia | 21×34 | figura sin rostro de `scarymobs` |
+| `skeleton_tall` (licántropo) | Bruto de melé | 25×48 (2 frames) | hombre lobo de `scarymobs` |
+| `bone_golem` | Tanque lento | 40×52 (2 frames) | masa de huesos de `scarymobs` |
+| `lanker` (élite) | Amenaza alta y delgada | 19×63 | `cosmic_horror_dude` |
+| `warden` (mini-jefe) | Muro de carne | 64×66 (6 frames) | `DICE 3` de `Asset Pack` |
+| `weaver` (élite) | Arácnido de dado | 54×59 (4 frames) | `DICE 5` de `Asset Pack` |
+
+Reglas de integración que se mantienen:
+
+* **Anclaje por pies:** cada frame se recorta y se dibuja con origen `(w/2, h)`, así entra en el Y-sort sin desplazar la sombra.
+* **Sombra fuera del sprite:** la elipse se dibuja aparte; nunca está horneada en el PNG.
+* **Pase de corrupción:** `horror_pass()` desatura al 60 %, oscurece, tiñe las sombras de violeta y añade un borde casi negro. Es lo que impide que se note el cambio de artista.
+* **Escala exacta:** el tamaño final se hornea en el atlas (`NEAREST`), nunca se escala en tiempo de dibujo.
+* **Animación opcional:** `animFrame`/`animTime` avanzan solo si el set tiene `fps > 0`; las criaturas de una sola pose respiran con el *wobble* procedural.
+
+Para regenerar el atlas tras cambiar recortes o escalas:
+
+```bash
+python3 tools/import_external.py --preview   # atlas + Lua + hoja de contactos
+BLOODSTY_AUTOTEST=bestiary love .            # alineación de las 9 criaturas
+```
+
+> La procedencia y el estado de licencias de cada pack están en **[CREDITS.md](CREDITS.md)**.
 
 ---
 
@@ -71,11 +125,12 @@ Bloodstry/
 │   │   ├── camera.lua           # Cámara con lerp, bounds y screenshake
 │   │   ├── spatial_hash.lua     # Cuadrícula espacial O(N) para hordas de 500+ entidades
 │   │   ├── input.lua            # Abstracción de controles y ratón
+│   │   ├── bestiary_atlas.lua   # Quads generados del bestiario importado
 │   │   └── state_machine.lua    # Gestor de estados de escena
 │   ├── entities/
 │   │   ├── entity.lua           # Clase base con vida, daño y knockback
 │   │   ├── player.lua           # Protagonista, clases, pasivas y armas
-│   │   ├── enemy.lua            # Esqueletos comunes, altos, con túnica y zombies
+│   │   ├── enemy.lua            # Bestiario: 9 criaturas con animación multi-frame
 │   │   ├── limb_drop.lua        # Extremidades recogibles en el suelo
 │   │   ├── soul_drop.lua        # Orbes de sangre / almas con imán
 │   │   └── bosses/
@@ -98,6 +153,10 @@ Bloodstry/
 │       ├── class_select_state.lua # Pantalla de selección de Guerrero, Bárbaro o Asesino
 │       ├── play_state.lua         # Core gameplay loop
 │       └── game_over_state.lua    # Pantalla de victoria y derrota
+├── tools/
+│   ├── generate_assets.py       # Pipeline determinista del arte propio
+│   ├── import_external.py       # Recorte, corrupción de paleta y atlas externo
+│   └── artgen/                  # Módulos de dibujo procedural
 ```
 
 ---

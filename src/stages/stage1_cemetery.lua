@@ -48,6 +48,7 @@ function Stage1Cemetery:new()
     self.bossInstance = nil
     self.bossIntroTimer = 0
     self.bossIntroDuration = 4.2
+    self.wardenSpawned = false
 
     self.props = {}
     self.groundDecals = {}
@@ -147,13 +148,14 @@ function Stage1Cemetery:generateDecorations()
         end
     end
 
-    -- Angel statues around the oldest plots.
+    -- Angel statues around the oldest plots. Half of them use the imported
+    -- weeping angel so the cemetery gains a second, colder silhouette.
     local statues = 0
     for _ = 1, 400 do
         if statues >= 9 then break end
         local x, y = rand(-BOUND + 60, BOUND - 60), rand(-BOUND + 60, BOUND - 60)
         if (x * x + y * y) > 300 * 300 and not blocked(x, y, 22) then
-            add("statue", x, y, rand(0.95, 1.2), 16)
+            add(rng() < 0.55 and "angel" or "statue", x, y, rand(0.9, 1.12), 16)
             statues = statues + 1
         end
     end
@@ -232,10 +234,40 @@ function Stage1Cemetery:update(dt, player, enemiesList, camera)
     if not self.bossSpawned and self.timeElapsed >= 150 then
         self:spawnBoss(player, enemiesList, camera)
     end
+
+    -- One slow, oversized brute halfway through the shift. It is not a boss:
+    -- no banner, no victory gate, just a wall of meat that forces movement.
+    if not self.wardenSpawned and self.timeElapsed >= 112 then
+        self.wardenSpawned = true
+        local angle = math.random() * math.pi * 2
+        local sx = player.x + math.cos(angle) * 300
+        local sy = player.y + math.sin(angle) * 300
+        sx = math.max(self.bounds.minX + 40, math.min(self.bounds.maxX - 40, sx))
+        sy = math.max(self.bounds.minY + 40, math.min(self.bounds.maxY - 40, sy))
+        table.insert(enemiesList, Enemy(sx, sy, Enemy.TYPES.WARDEN))
+        if camera then camera:shake(7, 0.7) end
+    end
 end
 
 function Stage1Cemetery:spawnWavePack(player, enemiesList)
     local packSize = math.random(2, 4 + math.floor(self.timeElapsed / 40))
+    local t = self.timeElapsed
+
+    -- Weighted roster: the commons stay the baseline, every other creature
+    -- unlocks with time so the first minute does not look like the last one.
+    local roster = {
+        { Enemy.TYPES.SKELETON_COMMON, 10 },
+        { Enemy.TYPES.HOUND,       t > 12  and 5 or 0 },
+        { Enemy.TYPES.ZOMBIE,      t > 25  and 4 or 0 },
+        { Enemy.TYPES.SKELETON_TALL, t > 45 and 3 or 0 },
+        { Enemy.TYPES.BONE_GOLEM,  t > 70  and 2 or 0 },
+        { Enemy.TYPES.SKELETON_ROBED, t > 80 and 2 or 0 },
+        { Enemy.TYPES.LANKER,      t > 105 and 1 or 0 },
+        { Enemy.TYPES.WEAVER,      t > 125 and 1 or 0 }
+    }
+    local totalWeight = 0
+    for i = 1, #roster do totalWeight = totalWeight + roster[i][2] end
+
     for _ = 1, packSize do
         local angle = math.random() * math.pi * 2
         local dist = math.random(320, 420)
@@ -245,12 +277,14 @@ function Stage1Cemetery:spawnWavePack(player, enemiesList)
         sx = math.max(self.bounds.minX + 30, math.min(self.bounds.maxX - 30, sx))
         sy = math.max(self.bounds.minY + 30, math.min(self.bounds.maxY - 30, sy))
 
+        local pick = math.random() * totalWeight
         local eType = Enemy.TYPES.SKELETON_COMMON
-        local roll = math.random()
-        if self.timeElapsed > 45 and roll < 0.25 then
-            eType = Enemy.TYPES.SKELETON_TALL
-        elseif self.timeElapsed > 80 and roll < 0.45 then
-            eType = Enemy.TYPES.SKELETON_ROBED
+        for i = 1, #roster do
+            pick = pick - roster[i][2]
+            if pick <= 0 then
+                eType = roster[i][1]
+                break
+            end
         end
 
         table.insert(enemiesList, Enemy(sx, sy, eType))
@@ -453,6 +487,21 @@ end
 function Stage1Cemetery:drawProp(p)
     if p.type == "central_crypt" then
         self:drawCrypt(p)
+        return
+    end
+
+    -- Imported bestiary props (e.g. the weeping angel) live in their own atlas.
+    local bestiary = Assets.quads.bestiary and Assets.quads.bestiary[p.type]
+    local bestiarySheet = Assets.sprites.bestiary
+    if bestiary and bestiarySheet then
+        local frame = bestiary.frames[1]
+        local _, _, w, h = frame:getViewport()
+        local s = p.scale or 1
+        love.graphics.setColor(0, 0, 0, 0.36)
+        love.graphics.ellipse("fill", p.x, p.y - 1, w * s * 0.32, math.max(2, 3 * s))
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(bestiarySheet, frame, p.x, p.y, 0,
+            p.flip and -s or s, s, w / 2, h)
         return
     end
 

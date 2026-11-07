@@ -88,7 +88,10 @@ function PlayState:update(dt)
         return
     end
 
-    if self.player.pendingLevelUps > 0 and not self.upgradeMenu.active then
+    -- Hold pending upgrades while a boss intro strip is on screen; opening the
+    -- menu there would cover the boss entrance.
+    local introActive = (self.stage.bossIntroTimer or 0) > 0
+    if self.player.pendingLevelUps > 0 and not self.upgradeMenu.active and not introActive then
         self.upgradeMenu:open(self.player)
     end
 

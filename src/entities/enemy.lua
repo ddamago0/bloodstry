@@ -11,50 +11,58 @@ Enemy.TYPES = {
     SKELETON_COMMON = "skeleton_common",
     SKELETON_TALL = "skeleton_tall",
     SKELETON_ROBED = "skeleton_robed",
-    ZOMBIE = "zombie"
+    ZOMBIE = "zombie",
+    HOUND = "hound",
+    BONE_GOLEM = "bone_golem",
+    LANKER = "lanker",
+    WARDEN = "warden",
+    WEAVER = "weaver"
+}
+
+-- One row per creature. `sprite` points at an animation in the imported
+-- bestiary atlas (see tools/import_external.py); `flip` marks sprites that are
+-- drawn facing left by default so the mirroring stays consistent.
+local DEFS = {
+    skeleton_common = { hp = 22, speed = 54, radius = 6,  damage = 8,  xp = 10, sprite = "skeleton_common" },
+    skeleton_tall   = { hp = 60, speed = 40, radius = 10, damage = 20, xp = 20, sprite = "werewolf" },
+    skeleton_robed  = { hp = 30, speed = 44, radius = 7,  damage = 10, xp = 14, sprite = "pallid", ranged = true },
+    zombie          = { hp = 40, speed = 62, radius = 8,  damage = 12, xp = 12, sprite = "crawler", flip = true },
+    hound           = { hp = 16, speed = 96, radius = 6,  damage = 6,  xp = 9,  sprite = "hound", flip = true },
+    bone_golem      = { hp = 110, speed = 26, radius = 12, damage = 24, xp = 30, sprite = "bone_golem" },
+    lanker          = { hp = 170, speed = 36, radius = 9,  damage = 26, xp = 50, sprite = "lanker", elite = true },
+    warden          = { hp = 320, speed = 30, radius = 16, damage = 30, xp = 90, sprite = "warden", elite = true },
+    weaver          = { hp = 220, speed = 34, radius = 13, damage = 26, xp = 60, sprite = "weaver", elite = true }
 }
 
 function Enemy:new(x, y, enemyType)
     self.type = enemyType or Enemy.TYPES.SKELETON_COMMON
+    local def = DEFS[self.type] or DEFS[Enemy.TYPES.SKELETON_COMMON]
 
-    local hp, spd, rad, dmg
-    if self.type == Enemy.TYPES.SKELETON_COMMON then
-        hp = 22
-        spd = 54
-        rad = 6
-        dmg = 8
-    elseif self.type == Enemy.TYPES.SKELETON_TALL then
-        hp = 50
-        spd = 38
-        rad = 10
-        dmg = 18
-    elseif self.type == Enemy.TYPES.SKELETON_ROBED then
-        hp = 28
-        spd = 46
-        rad = 7
-        dmg = 10
-        self.shootCooldown = math.random(2.5, 4.5)
-        self.shootTimer = self.shootCooldown
-    elseif self.type == Enemy.TYPES.ZOMBIE then
-        hp = 40
-        spd = 35
-        rad = 8
-        dmg = 14
-    end
-
-    Enemy.super.new(self, x, y, rad, hp)
-    self.speed = spd
-    self.contactDamage = dmg
+    Enemy.super.new(self, x, y, def.radius, def.hp)
+    self.speed = def.speed
+    self.contactDamage = def.damage
+    self.xpValue = def.xp
+    self.isElite = def.elite or false
+    self.spriteName = def.sprite
+    self.spriteFB = Assets.quads.bestiary and Assets.quads.bestiary[def.sprite] or nil
+    self.spriteFacesLeft = def.flip or false
     self.attackCooldown = 0.5
     self.attackTimer = 0
+
+    if def.ranged then
+        self.shootCooldown = math.random(2.5, 4.5)
+        self.shootTimer = self.shootCooldown
+    end
 
     -- Bleed DoT
     self.bleedTimer = 0
     self.bleedTickTimer = 0
     self.bleedDamagePerTick = 4
 
-    -- Visual step wobble
+    -- Visual step wobble and animation clock.
     self.wobble = math.random() * math.pi * 2
+    self.animTime = math.random() * 2
+    self.animFrame = 1
     self.isFacingLeft = false
 end
 
@@ -122,7 +130,15 @@ function Enemy:update(dt, player, spatialHash, enemyProjectiles, bloodCanvas, pa
     self.y = self.y + finalVY * dt
     self.wobble = self.wobble + dt * 6
 
-    -- Robed Skeleton ranged attack
+    -- Multi-frame sprites advance on their own clock. Single-pose creatures
+    -- still breathe through the procedural wobble in draw().
+    local sheet = self.spriteFB
+    if sheet and sheet.fps > 0 and #sheet.frames > 1 then
+        self.animTime = self.animTime + dt * sheet.fps
+        self.animFrame = (math.floor(self.animTime) % #sheet.frames) + 1
+    end
+
+    -- Ranged caster
     if self.type == Enemy.TYPES.SKELETON_ROBED and enemyProjectiles then
         self.shootTimer = self.shootTimer - dt
         if self.shootTimer <= 0 and dist < 220 then
@@ -154,22 +170,23 @@ function Enemy:handleDeath(dropsList, bloodCanvas, particles)
     -- Splatter persistent gore on ground
     if bloodCanvas then
         local bloodColor = (self.type == Enemy.TYPES.ZOMBIE) and { 0.2, 0.35, 0.15, 0.85 } or { 0.55, 0.05, 0.08, 0.85 }
-        bloodCanvas:splatter(self.x, self.y, math.random(5, 9), 18, bloodColor)
+        local drops = self.isElite and math.random(12, 18) or math.random(5, 9)
+        local radius = self.isElite and 30 or 18
+        bloodCanvas:splatter(self.x, self.y, drops, radius, bloodColor)
     end
     if particles then
-        particles:emitBone(self.x, self.y, 10)
-        particles:emitBlood(self.x, self.y, 8)
+        particles:emitBone(self.x, self.y, self.isElite and 24 or 10)
+        particles:emitBlood(self.x, self.y, self.isElite and 22 or 8)
     end
 
     -- Always drop Blood/Soul XP orb
     if dropsList then
-        local xpVal = (self.type == Enemy.TYPES.SKELETON_TALL) and 25 or 12
-        table.insert(dropsList, SoulDrop(self.x, self.y, xpVal))
+        table.insert(dropsList, SoulDrop(self.x, self.y, self.xpValue or 10))
 
-        -- 22% Chance of dropping a usable Limb Weapon
-        if math.random() <= 0.22 then
+        -- 22% Chance of dropping a usable Limb Weapon. Elites always bleed.
+        if self.isElite or math.random() <= 0.22 then
             local limb
-            if self.type == Enemy.TYPES.SKELETON_TALL then
+            if self.type == Enemy.TYPES.SKELETON_TALL or self.isElite then
                 limb = Limb(Limb.TYPES.SKELETON_ARM, math.random(9, 15))
             elseif self.type == Enemy.TYPES.ZOMBIE then
                 limb = Limb(Limb.TYPES.ZOMBIE_ARM, math.random(6, 12))
@@ -181,42 +198,78 @@ function Enemy:handleDeath(dropsList, bloodCanvas, particles)
     end
 end
 
-function Enemy:draw()
-    if not self.alive then return end
+-- Resolve which sprite/quad to draw. The imported atlas wins; the original
+-- hand-drawn sheet stays as a fallback for development without the importer.
+function Enemy:getDrawState()
+    local sheet = self.spriteFB
+    local image = Assets.sprites.bestiary
+    if sheet and image then
+        local quad = sheet.frames[self.animFrame] or sheet.frames[1]
+        if quad then
+            local _, _, w, h = quad:getViewport()
+            return image, quad, w, h, 1
+        end
+    end
 
     local frames = Assets.quads.enemyFrames and Assets.quads.enemyFrames[self.type]
-    local sprite = Assets.sprites.enemySheet
-    if not (frames and frames[1] and sprite) then return end
-
-    local isTall = self.type == Enemy.TYPES.SKELETON_TALL
-    local isRobed = self.type == Enemy.TYPES.SKELETON_ROBED
-    local isZombie = self.type == Enemy.TYPES.ZOMBIE
-
-    local scale = 1
-    if isTall then
-        scale = 1.18
-    elseif isRobed then
-        scale = 1.04
-    end
+    local legacy = Assets.sprites.enemySheet
+    if not (frames and frames[1] and legacy) then return nil end
 
     local frameIndex = math.floor(self.wobble) % 4 + 1
     local quad = frames[frameIndex] or frames[1]
-    local scaleX = self.isFacingLeft and -scale or scale
-    local shadowRX = isTall and 11 or (isZombie and 9 or 8)
-    local shadowRY = isTall and 4 or 3
+    local scale = 1
+    if self.type == Enemy.TYPES.SKELETON_TALL then
+        scale = 1.18
+    elseif self.type == Enemy.TYPES.SKELETON_ROBED then
+        scale = 1.04
+    end
+    return legacy, quad, 32, 40, scale
+end
+
+function Enemy:draw()
+    if not self.alive then return end
+
+    local sprite, quad, spriteW, spriteH, baseScale = self:getDrawState()
+    if not (sprite and quad) then return end
+
+    local isElite = self.isElite
+    local facing = (self.spriteFacesLeft ~= self.isFacingLeft) and -1 or 1
+
+    -- Elites breathe slightly heavier so the big silhouettes do not feel frozen.
+    local breathe = 1
+    if isElite then
+        breathe = 1 + 0.02 * math.sin(self.wobble * 0.6)
+    end
+    local scale = baseScale * breathe
+    local offsetY = math.floor(math.sin(self.wobble) * 0.9)
+    if isElite then offsetY = math.floor(math.sin(self.wobble * 0.5) * 1.6) end
+
+    local originX = spriteW * 0.5
+    local originY = spriteH
+    local drawW = spriteW * scale
 
     -- 2.5D elliptical shadow anchored under the feet.
-    love.graphics.setColor(0, 0, 0, 0.38)
+    local shadowRX = math.max(4, drawW * 0.34)
+    local shadowRY = math.max(2, drawW * 0.11)
+    love.graphics.setColor(0, 0, 0, isElite and 0.46 or 0.38)
     love.graphics.ellipse("fill", self.x, self.y - 1, shadowRX, shadowRY)
 
+    -- Elites carry a faint cold halo so they read as a threat through the fog.
+    if isElite then
+        love.graphics.setColor(0.55, 0.72, 0.85, 0.10 + 0.05 * math.sin(self.wobble))
+        love.graphics.ellipse("fill", self.x, self.y - 2, shadowRX * 1.5, shadowRY * 1.9)
+    end
+
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(sprite, quad, self.x, self.y, 0, scaleX, scale, 16, 40)
+    love.graphics.draw(sprite, quad, self.x, self.y + offsetY, 0,
+        facing * scale, scale, originX, originY)
 
     -- Hurt flash: additive red silhouette on top of the sprite.
     if self.hurtTimer > 0 then
         love.graphics.setBlendMode("add", "alphamultiply")
         love.graphics.setColor(0.85, 0.08, 0.10, 0.85)
-        love.graphics.draw(sprite, quad, self.x, self.y, 0, scaleX, scale, 16, 40)
+        love.graphics.draw(sprite, quad, self.x, self.y + offsetY, 0,
+            facing * scale, scale, originX, originY)
         love.graphics.setBlendMode("alpha", "alphamultiply")
     end
 

@@ -6,6 +6,12 @@ local Assets = require("src.core.assets")
 local Theme = require("src.ui.theme")
 local Player = Entity:extend()
 
+-- Blood/XP pacing. The first level asks for roughly 12-15 regular kills, and
+-- the 1.30 curve keeps the pace readable across a full stage instead of
+-- cascading the upgrade menu every few seconds.
+local BASE_LEVEL_COST = 160
+local LEVEL_COST_GROWTH = 1.38
+
 function Player:new(x, y, classType)
     self.classType = classType or "guerrero"
 
@@ -43,7 +49,7 @@ function Player:new(x, y, classType)
     -- Progression / Souls
     self.bloodPoints = 0
     self.level = 1
-    self.pointsToNextLevel = 50
+    self.pointsToNextLevel = BASE_LEVEL_COST
     self.pendingLevelUps = 0
     self.magnetRadius = 75
     self.killCount = 0
@@ -94,14 +100,20 @@ end
 
 function Player:gainBloodPoints(amount)
     self.bloodPoints = self.bloodPoints + amount
-    if self.bloodPoints >= self.pointsToNextLevel then
+
+    -- `while` instead of `if`: a single big orb (boss drops, chained pickups)
+    -- can cross more than one threshold in a frame. Consuming only one would
+    -- leave bloodPoints above pointsToNextLevel and push the HUD bar past 100%.
+    local leveled = false
+    while self.bloodPoints >= self.pointsToNextLevel do
         self.bloodPoints = self.bloodPoints - self.pointsToNextLevel
         self.level = self.level + 1
-        self.pointsToNextLevel = math.floor(self.pointsToNextLevel * 1.35)
+        self.pointsToNextLevel = math.floor(self.pointsToNextLevel * LEVEL_COST_GROWTH)
         self.pendingLevelUps = self.pendingLevelUps + 1
-        return true -- leveled up
+        leveled = true
     end
-    return false
+
+    return leveled
 end
 
 function Player:equipLimb(newLimb)

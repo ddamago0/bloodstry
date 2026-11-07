@@ -77,6 +77,7 @@ Al matar enemigos existe una probabilidad del $22\%$ de cercenar una extremidad 
 ## 5. Progresión, Menú de Mejoras y Pactos Malditos
 
 * **Almas y Sangre:** Los enemigos derrotados liberan orbes de sangre con imán de atracción hacia el protagonista.
+* **Ritmo de Sangre:** Los orbes escalan con la criatura: sabueso 9, esqueleto común 10, arrastrado 12, pálido 14, licántropo 20, gólem 30, élite 50, mini-jefe 90 y 60 por orbe del jefe. El primer nivel cuesta 160 y cada nivel siguiente multiplica el umbral por 1.38, así que el nivel 2 exige unas 15 bajas y un nivel tardío supera las 100. Si un solo orbe cruza varios umbrales, se consumen todos en el mismo instante (la barra nunca pasa del 100%).
 * **Menú Modal de Nivel:** Al subir de nivel (o mediante `Tab` / `U`) se congela el combate y se despliegan **3 cartas aleatorias**:
   * **Bendiciones Estándar:** Vigor Impío (+25 Vida), Fuerza Cadavérica (+22% Daño), Paso del Sepulturero (+15% Velocidad), Imán Sanguíneo (+45% Radio), Sed Insaciable (+5% Robo de Vida).
   * **Pactos Malditos (Trade-offs extremos):**
@@ -91,7 +92,7 @@ Al matar enemigos existe una probabilidad del $22\%$ de cercenar una extremidad 
 
 | Stage | Bioma & Atmósfera | Horda de Enemigos | Jefe de Nivel (Boss) |
 | :--- | :--- | :--- | :--- |
-| **1. El Cementerio** *(Implementado)* | Niebla nocturna, lápidas agrietadas y la cripta central rota. | Esqueletos comunes, mutados altos y cultistas con vestiduras que disparan huesos. | **La Parca:** Teletransporte, cortes de guadaña espectral, ráfagas de cráneos e invocación de escolta ósea al 50% de PS. |
+| **1. El Cementerio** *(Implementado)* | Niebla nocturna, lápidas agrietadas y la cripta central rota. | Bestiario importado: sabuesos, esqueletos, arrastrados, pálidos que disparan huesos, licántropos, gólems de huesos, un élite lánguido y un mini-jefe de carne. | **La Parca:** Teletransporte, cortes de guadaña espectral, ráfagas de cráneos e invocación de escolta ósea al 50% de PS. |
 | **2. Clínica Abandonada** | Sanatorio clausurado con tráfico de cadáveres frescos. | Zombies putrefactos, corredores mutilados y esqueletos remanentes. | **Paciente Cero:** Zombie que escupe ácido corrosivo y viste la túnica robada de La Parca. |
 | **3. La Granja Marchita** | Campo fúnebre con icor y niebla de hierba alta que oculta enemigos. | Espantapájaros poseídos y quimeras de paja. | **El Caballo de Paja:** Doble fase (1: Carga veloz de arrollamiento; 2: Arde en llamas montado por un jinete esqueleto). |
 | **4. El Matadero Abisal** | Laboratorio subterráneo con cintas mecánicas y pozas de sangre. | Carniceros desollados, sabuesos veloces y quimeras de carne. | **Don Evaristo, El Cosechador:** Anciano transfigurado en una amalgama necrótica de extremidades. |
@@ -117,7 +118,8 @@ Bloodstry/
 │       ├── player_guerrero.png  # Spritesheet animado del Guerrero
 │       ├── player_barbaro.png   # Spritesheet animado del Bárbaro
 │       ├── player_asesino.png   # Spritesheet animado del Asesino
-│       ├── enemy_skeleton.png   # Spritesheet animado de esqueletos
+│       ├── enemy_skeleton.png   # Spritesheet animado de esqueletos (fallback)
+│       ├── horror_bestiary.png  # Atlas del bestiario importado (9 criaturas + ángel)
 │       ├── boss_la_parca.png    # Spritesheet animado de La Parca
 │       └── limbs_and_blood.png  # Extremidades y manchas de sangre para el HUD/suelo
 └── src/
@@ -126,11 +128,12 @@ Bloodstry/
     │   ├── camera.lua           # Cámara con lerp suave, bounds y screenshake procedural
     │   ├── input.lua            # Unificación de teclado WASD, ratón y teclas de acción
     │   ├── spatial_hash.lua     # Cuadrícula espacial O(1) para manejo de hordas masivas
+    │   ├── bestiary_atlas.lua   # Rectángulos de frames generados por el importador
     │   └── state_machine.lua    # Administrador de estados de escena
     ├── entities/
     │   ├── entity.lua           # Clase base de entidad (x, y, vida, daño, knockback)
     │   ├── player.lua           # Entidad del jugador, pasivas, 3 clases y armas
-    │   ├── enemy.lua            # Enemigos con flocking, separación por spatial hash y drops
+    │   ├── enemy.lua            # Bestiario data-driven, animación multi-frame y drops
     │   ├── limb_drop.lua        # Extremidad interactiva tirada en el suelo
     │   ├── soul_drop.lua        # Orbes de experiencia con imán hacia el protagonista
     │   └── bosses/
@@ -154,6 +157,58 @@ Bloodstry/
         ├── play_state.lua         # Bucle principal de gameplay y combate
         └── game_over_state.lua    # Pantalla de victoria y muerte con estadísticas
 ```
+
+---
+
+## 7.1 Pipeline del Bestiario Externo
+
+El bestiario se genera con `tools/import_external.py`, que lee directamente los ZIP de `external_assets/` (no requiere descomprimirlos) y produce dos artefactos versionables:
+
+* `assets/sprites/horror_bestiary.png` — atlas empaquetado por *shelf packing*.
+* `src/core/bestiary_atlas.lua` — tabla de rectángulos, FPS y nombres de animación.
+
+El script soporta dos modos porque los packs no comparten formato:
+
+1. **Modo clúster:** `scarymobs` flota poses sueltas en lienzos transparentes. Se hace *flood fill* 8-conectado, se ordenan los componentes por fila y columna, y se recortan los índices pedidos en `ANIMS`.
+2. **Modo `anim_dir`:** los monstruos de dado traen un PNG por frame (150×150). Se recortan todos con **una caja común** para que el movimiento relativo no se pierda, y se escalan con `NEAREST` a la mitad.
+
+**Pase de corrupción** (`horror_pass`): desatura al 60 %, oscurece al 94 %, tiñe solo las sombras con violeta (`#0E0A18`) y añade un borde casi negro de 1 px. El resultado comparte la paleta de ceniza/hueso/sangre seca del resto del juego, sin perder el sombreado original del artista.
+
+**Anclaje y animación:**
+
+* Cada frame se dibuja con origen `(w/2, h)`, de modo que los pies coinciden con `entity.y` y el Y-sort sigue funcionando (props incluidos).
+* `Enemy.animTime` avanza solo si el set tiene `fps > 0`; si no, la criatura respira con el *wobble* procedural ya existente.
+* Los sprites dibujados mirando a la izquierda declaran `flip = true` para que el espejado no invierta la orientación.
+
+**Directorio de oleadas** (`stage1_cemetery.lua`): una tabla de pesos desbloquea criaturas con el tiempo (sabuesos a los 12 s, arrastrados a los 25 s, licántropos a los 45 s, gólems a los 70 s, pálidos a los 80 s, lánguido a los 105 s, tejedor a los 125 s) y un mini-jefe aparece una sola vez a los 112 s. Los comunes siguen siendo el 40-60 % de la horda para no romper el ritmo de sangre.
+
+> **Licencias:** `scarymobs.zip` y `Asset Pack.zip` llegaron sin LICENSE ni autor. Ver `CREDITS.md`; no redistribuir el atlas derivado hasta confirmar su procedencia.
+
+---
+
+## 7.2 Rediseño de los Supervivientes
+
+Los tres jugadores se redibujaron con el mismo registro visual que el bestiario para que no parezcan invitados de otro juego. Siguen generándose con `tools/artgen/characters.py` y se empaquetan en hojas de `128×40` (4 frames de `32×40`).
+
+**Paleta:** constantes propias en `characters.py` (`ASH_*`, `SKIN_M*`, `STEEL_M*`, `LEATH_M*`, `CLOTH_M*`, `BLOOD_M*`). Son versiones desaturadas de la paleta vieja: gris ceniza, hueso sucio, cuero apagado y sangre seca. La armadura ya no es el objeto más brillante de la pantalla.
+
+**Ciclo de caminata de 4 pasos:**
+
+| Frame | Pose | Pie cercano | Pie lejano |
+| :---: | :--- | :--- | :--- |
+| 1 | Contacto (también *idle*) | Plantado, adelantado | Plantado, atrasado |
+| 2 | Paso | Plantado | Elevado 3 px |
+| 3 | Contacto inverso | Plantado, atrasado | Plantado, adelantado |
+| 4 | Paso | Elevado 3 px | Plantado |
+
+* `NEAR_STANCE`/`FAR_STANCE` hunden el pie adelantado 1 px y `NEAR_LIFT`/`FAR_LIFT` elevan el que pasa; el frame 1 tiene ambos pies en el suelo, así que el personaje no flota cuando está quieto.
+* Los brazos oscilan en contrafase (`ARM_SWING`) y el torso sube 1 px en los frames de paso (`BOB`).
+* El atlas se sigue dibujando con origen `(16, 40)` y escala 1, igual que antes: no hubo que tocar `player.lua` ni `assets.lua`.
+* `Player:draw` usa el frame 1 cuando `moving` es falso y avanza a 8 fps al caminar.
+
+**Siluetas diferenciadas:** el Guerrero lleva yelmo cerrado con visera oscura y dos destellos de ojos, tabardo sangriento y escarcelas; el Bárbaro es más ancho, con piel de animal sobre los hombros, torso desnudo y barba gris (un valor más frío que la piel para que la cara no se funda con el pelaje); el Asesino es más estrecho, con capucha, bufanda y máscara de tela que solo deja ver los ojos.
+
+**Verificación:** `BLOODSTY_AUTOTEST=walk love .` captura cuatro poses sucesivas mientras el jugador camina, útil para revisar el ciclo sin grabar vídeo.
 
 ---
 
